@@ -1,28 +1,33 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using LSG.GenericCrud.Exceptions;
 using LSG.GenericCrud.Models;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Extensions.Internal;
+using LSG.GenericCrud.Repositories;
 
-namespace LSG.GenericCrud.Repositories
+namespace LSG.GenericCrud.Services
 {
     /// <summary>
     /// 
     /// </summary>
     /// <typeparam name="T"></typeparam>
-    /// <seealso cref="LSG.GenericCrud.Repositories.ICrudRepository{T}" />
-    /// <seealso cref="ICrudRepository{T}" />
-    public class Crud<T> : ICrudRepository<T>
-        where T : class, IEntity, new()
+    /// <seealso cref="LSG.GenericCrud.Services.ICrudService{T}" />
+    public class CrudService<T> : ICrudService<T>
     {
         /// <summary>
-        /// The context
+        /// The repository
         /// </summary>
-        protected IDbContext Context;
+        private readonly ICrudRepository<T> _repository;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="CrudService{T}"/> class.
+        /// </summary>
+        /// <param name="repository">The repository.</param>
+        public CrudService(ICrudRepository<T> repository)
+        {
+            _repository = repository;
+            AutoCommit = true;
+        }
 
         /// <summary>
         /// Gets or sets a value indicating whether [automatic commit].
@@ -33,31 +38,16 @@ namespace LSG.GenericCrud.Repositories
         public bool AutoCommit { get; set; }
 
         /// <summary>
-        /// Default parameterless consutrctor
-        /// </summary>
-        public Crud() { }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="Crud{T}" /> class.
-        /// </summary>
-        /// <param name="context">The context.</param>
-        public Crud(IDbContext context)
-        {
-            Context = context;
-            AutoCommit = true;
-        }
-
-        /// <summary>
         /// Gets all.
         /// </summary>
         /// <returns></returns>
-        public virtual IEnumerable<T> GetAll() => Context.Set<T>().AsEnumerable();
+        public IEnumerable<T> GetAll() => _repository.GetAll();
 
         /// <summary>
-        /// Get all async.
+        /// Gets all asynchronous.
         /// </summary>
         /// <returns></returns>
-        public virtual async Task<IEnumerable<T>> GetAllAsync() => await Context.Set<T>().ToListAsync();
+        public async Task<IEnumerable<T>> GetAllAsync() => await _repository.GetAllAsync();
 
         /// <summary>
         /// Gets the by identifier.
@@ -65,24 +55,24 @@ namespace LSG.GenericCrud.Repositories
         /// <param name="id">The identifier.</param>
         /// <returns></returns>
         /// <exception cref="LSG.GenericCrud.Exceptions.EntityNotFoundException"></exception>
-        public virtual T GetById(Guid id)
+        public T GetById(Guid id)
         {
-            var entity = Context.Set<T>().SingleOrDefault(_ => _.Id == id);
+            var entity = _repository.GetById(id);
             if (entity == null) throw new EntityNotFoundException();
-            else return entity;
+            return entity;
         }
 
         /// <summary>
-        /// Gets the by identifier async.
+        /// Gets the by identifier asynchronous.
         /// </summary>
         /// <param name="id">The identifier.</param>
         /// <returns></returns>
         /// <exception cref="LSG.GenericCrud.Exceptions.EntityNotFoundException"></exception>
-        public virtual async Task<T> GetByIdAsync(Guid id)
+        public async Task<T> GetByIdAsync(Guid id)
         {
-            var entity = await Context.Set<T>().SingleOrDefaultAsync(_ => _.Id == id);
+            var entity = await _repository.GetByIdAsync(id);
             if (entity == null) throw new EntityNotFoundException();
-            else return entity;
+            return entity;
         }
 
         /// <summary>
@@ -90,11 +80,11 @@ namespace LSG.GenericCrud.Repositories
         /// </summary>
         /// <param name="entity">The entity.</param>
         /// <returns></returns>
-        public virtual T Create(T entity)
+        public T Create(T entity)
         {
-            var returnEntity = Context.Set<T>().Add(entity).Entity;
-            if (AutoCommit) Context.SaveChanges();
-            return returnEntity;
+            var createdEntity = _repository.Create(entity);
+            if (AutoCommit) _repository.SaveChanges();
+            return createdEntity;
         }
 
         /// <summary>
@@ -102,11 +92,11 @@ namespace LSG.GenericCrud.Repositories
         /// </summary>
         /// <param name="entity">The entity.</param>
         /// <returns></returns>
-        public virtual async Task<T> CreateAsync(T entity)
+        public async Task<T> CreateAsync(T entity)
         {
-            var returnEntity = await Context.Set<T>().AddAsync(entity);
-            if (AutoCommit) await Context.SaveChangesAsync();
-            return returnEntity.Entity;
+            var createdEntity = await _repository.CreateAsync(entity);
+            if (AutoCommit) _repository.SaveChanges();
+            return createdEntity;
         }
 
         /// <summary>
@@ -115,7 +105,7 @@ namespace LSG.GenericCrud.Repositories
         /// <param name="id">The identifier.</param>
         /// <param name="entity">The entity.</param>
         /// <returns></returns>
-        public virtual T Update(Guid id, T entity)
+        public T Update(Guid id, T entity)
         {
             var originalEntity = GetById(id);
             foreach (var prop in entity.GetType().GetProperties())
@@ -127,16 +117,18 @@ namespace LSG.GenericCrud.Repositories
                     if (value != null) originalProperty.SetValue(originalEntity, value);
                 }
             }
-            if (AutoCommit) Context.SaveChanges();
+            if (AutoCommit) _repository.SaveChanges();
             return originalEntity;
         }
+
+
         /// <summary>
         /// Updates the asynchronous.
         /// </summary>
         /// <param name="id">The identifier.</param>
         /// <param name="entity">The entity.</param>
         /// <returns></returns>
-        public virtual async Task UpdateAsync(Guid id, T entity)
+        public async Task<T> UpdateAsync(Guid id, T entity)
         {
             var originalEntity = await GetByIdAsync(id);
             foreach (var prop in entity.GetType().GetProperties())
@@ -148,7 +140,8 @@ namespace LSG.GenericCrud.Repositories
                     if (value != null) originalProperty.SetValue(originalEntity, value);
                 }
             }
-            if (AutoCommit) await Context.SaveChangesAsync();
+            if (AutoCommit) _repository.SaveChanges();
+            return originalEntity;
         }
 
         /// <summary>
@@ -156,11 +149,12 @@ namespace LSG.GenericCrud.Repositories
         /// </summary>
         /// <param name="id">The identifier.</param>
         /// <returns></returns>
-        public virtual T Delete(Guid id)
+        public T Delete(Guid id)
         {
-            Context.Set<T>().Remove(GetById(id));
-            if (AutoCommit) Context.SaveChanges();
-            return null;
+            var entity = GetById(id);
+            _repository.Delete(id);
+            if (AutoCommit) _repository.SaveChanges();
+            return entity;
         }
 
         /// <summary>
@@ -168,21 +162,12 @@ namespace LSG.GenericCrud.Repositories
         /// </summary>
         /// <param name="id">The identifier.</param>
         /// <returns></returns>
-        public virtual async Task<T> DeleteAsync(Guid id)
+        public async Task<T> DeleteAsync(Guid id)
         {
             var entity = await GetByIdAsync(id);
-            Context.Set<T>().Remove(entity);
-            if (AutoCommit) await Context.SaveChangesAsync();
+            await _repository.DeleteAsync(id);
+            if (AutoCommit) _repository.SaveChanges();
             return entity;
         }
-
-        /// <summary>
-        /// Saves the changes.
-        /// </summary>
-        public void SaveChanges()
-        {
-            Context.SaveChanges();
-        }
-        
     }
 }
